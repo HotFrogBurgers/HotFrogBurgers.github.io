@@ -1,0 +1,123 @@
+// Phaser 3 simple port for background + 5 bottom sprites
+(() => {
+  const WIDTH = 800;
+  const HEIGHT = 600;
+
+  const config = {
+    type: Phaser.AUTO,
+    parent: 'gameContainer',
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: '#141418',
+    scene: {
+      preload: preload,
+      create: create,
+      update: update
+    }
+  };
+
+  const game = new Phaser.Game(config);
+  let bottomSprites = []; // { sprite, speed }
+  let bgImage = null;
+
+  function preload() {
+    // optional local default assets can be loaded here if you add them to assets/
+    // we'll use dynamic loading for user uploads
+  }
+
+  function create() {
+    // background placeholder (a simple color rectangle) as default
+    bgImage = this.add.rectangle(0, 0, WIDTH, HEIGHT, 0x141418).setOrigin(0);
+
+    // create 5 sprites with placeholders
+    const targetW = Math.floor(WIDTH / 10);
+    const targetH = Math.floor(HEIGHT / 10);
+
+    for (let i = 0; i < 5; i++) {
+      // create a graphic texture as fallback
+      const key = `fallback_${i}`;
+      const gfx = this.textures.createCanvas(key, targetW, targetH);
+      const ctx = gfx.getContext();
+      // colored rectangle
+      ctx.fillStyle = `rgb(${50 + i*30}, ${120 - i*10}, ${150 + i*20})`;
+      ctx.fillRect(0, 0, targetW, targetH);
+      gfx.refresh();
+
+      const x = Math.round((i + 0.5) * WIDTH / 5);
+      const y = HEIGHT - Math.round(targetH / 2) - 5; // a bit above bottom
+      const s = this.add.image(x, y, key).setDisplaySize(targetW, targetH);
+      const speed = (i % 2 === 0 ? 1 : -1) * Phaser.Math.Between(40, 140);
+      bottomSprites.push({ sprite: s, speed });
+    }
+
+    // expose scene for DOM handlers
+    window._phaserScene = this;
+
+    // wire DOM inputs
+    const bgInput = document.getElementById('bgInput');
+    const spritesInput = document.getElementById('spritesInput');
+
+    bgInput.addEventListener('change', (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        // add base64 texture
+        const key = 'userBG';
+        this.textures.remove(key);
+        this.textures.addBase64(key, reader.result);
+        // remove previous bg object and add image
+        if (bgImage && bgImage.destroy) bgImage.destroy();
+        bgImage = this.add.image(0, 0, key).setOrigin(0).setDisplaySize(WIDTH, HEIGHT);
+        // send bg to back
+        this.children.sendToBack(bgImage);
+      };
+      reader.readAsDataURL(f);
+    });
+
+    spritesInput.addEventListener('change', (ev) => {
+      const files = Array.from(ev.target.files || []);
+      // only first 5
+      files.slice(0,5).forEach((file, idx) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const key = `userSprite_${idx}`;
+          // remove old texture if exists
+          this.textures.remove(key);
+          this.textures.addBase64(key, reader.result);
+
+          // replace sprite texture and resize to 1/10 window
+          const entry = bottomSprites[idx];
+          if (entry) {
+            entry.sprite.setTexture(key);
+            entry.sprite.setDisplaySize(Math.floor(WIDTH/10), Math.floor(HEIGHT/10));
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    // focus canvas on click so keys will work if needed
+    this.input.on('pointerdown', () => {
+      const canvas = document.querySelector('#gameContainer canvas');
+      if (canvas) canvas.focus();
+    });
+  }
+
+  function update(time, delta) {
+    // delta in ms — convert to seconds
+    const dt = delta / 1000;
+    // move bottom sprites horizontally
+    for (let i = 0; i < bottomSprites.length; i++) {
+      const entry = bottomSprites[i];
+      entry.sprite.x += entry.speed * dt;
+      // wrap-around
+      const halfW = entry.sprite.displayWidth / 2;
+      if (entry.sprite.x - halfW > WIDTH) {
+        entry.sprite.x = -halfW;
+      } else if (entry.sprite.x + halfW < 0) {
+        entry.sprite.x = WIDTH + halfW;
+      }
+    }
+  }
+})();
